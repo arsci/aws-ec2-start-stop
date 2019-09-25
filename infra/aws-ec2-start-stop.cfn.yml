@@ -1,0 +1,197 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Automated EC2 Start/Stop Configurations.'
+  
+Parameters:
+
+  pInstances:
+    Type: String
+    Description: 'The instances to start and stop'
+
+  pCronStart:
+    Type: String
+    Description: 'The cron expression to start the instance'
+
+  pCronStop:
+    Type: String
+    Description: 'The cron expression to stop the instance'
+
+Resources:
+
+  rLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties: 
+      Code:
+        ZipFile: !Sub |
+          import json, boto3
+          def handler(event, context):
+            client = boto3.client('ec2')
+            if event['action'] == 'start':
+              response = client.start_instances(
+                  InstanceIds=[${pInstances}]
+              )
+              print(response)
+            elif event['action'] == 'stop':
+              response = client.stop_instances(
+                InstanceIds=[${pInstances}]
+              )
+              print(response)
+            return {
+              'statusCode': 200,
+              'body': json.dumps('Action Complete')
+            }
+      Handler: index.handler
+      Role: !GetAtt rLambdaRole.Arn
+      Runtime: python3.6
+
+  rGetInstanceArnsFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        ZipFile: !Sub |
+          from botocore.vendored import requests
+          import json
+
+          def handler(event, context):
+            print(event)
+
+            instances = event['ResourceProperties']['Instances'].split(',')
+
+            arns = [ ]
+
+            for instance in instances:
+              arns.append("arn:aws:ec2:*:*:instance/" + instance.replace(' ',''))
+
+            print(arns)
+
+            try:
+              physicalresourceid = event['PhysicalResourceId']  
+            except: 
+              physicalresourceid = context.invoked_function_arn
+
+            responseBody = {
+              'Status': 'SUCCESS',
+              'Reason': 'Completed Successfully',
+              'LogicalResourceId': event['LogicalResourceId'],
+              'StackId': event['StackId'],
+              'RequestId': event['RequestId'],
+              'PhysicalResourceId': physicalresourceid,
+              'Data': { 'arns' : arns }
+            }
+
+            req = requests.put(event['ResponseURL'], data=json.dumps(responseBody))
+            print(req)
+            
+            return arns
+
+      Role: !GetAtt rGetInstanceArnsRole.Arn
+      Handler: index.handler
+      Runtime: python3.6
+
+  rGetInstanceArnsResource:
+    Type: AWS::CloudFormation::CustomResource
+    Properties:
+      ServiceToken: !GetAtt rGetInstanceArnsFunction.Arn
+      Instances: !Ref pInstances
+
+  rLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: "/"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action: sts:AssumeRole
+      Policies:
+        - PolicyName: aws-lambda-cloudwatch
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: 
+                  - "logs:CreateLogGroup"
+                Resource: 
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*" 
+              - Effect: Allow
+                Action:
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource:
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-rGetInstanceArnsFunction-*"
+        - PolicyName: aws-lambda-ec2-start-stop
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "ec2:StartInstances"
+                  - "ec2:StopInstances"
+                Resource: !GetAtt rGetInstanceArnsResource.arns
+
+  rGetInstanceArnsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: "/"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action: sts:AssumeRole
+      Policies:
+        - PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: 
+                  - "logs:CreateLogGroup"
+                Resource: 
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*" 
+              - Effect: Allow
+                Action:
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource:
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-rGetInstanceArnsFunction-*"
+          PolicyName: aws-lambda-cloudwatch
+
+  rStartRule:
+    Type: AWS::Events::Rule
+    Properties: 
+      Description: Rule for starting the EC2 instances
+      ScheduleExpression: !Sub 'cron(${pCronStart})'
+      State: DISABLED
+      Targets: 
+        - Arn: !GetAtt rLambdaFunction.Arn
+          Id: ec2-start-rule
+          Input: !Sub '{ "action": "start", "instance": "${pInstances}" }'
+
+  rStopRule:
+    Type: AWS::Events::Rule
+    Properties: 
+      Description: Rule for stopping the EC2 instances
+      ScheduleExpression: !Sub 'cron(${pCronStop})'
+      State: DISABLED
+      Targets: 
+        - Arn: !GetAtt rLambdaFunction.Arn
+          Id: ec2-stop-rule
+          Input: !Sub '{ "action": "stop", "instance": "${pInstances}" }'
+
+  rLambdaInvocationRoleStart:
+    Type: AWS::Lambda::Permission
+    Properties: 
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref rLambdaFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt rStartRule.Arn
+
+  rLambdaInvocationRoleStop:
+    Type: AWS::Lambda::Permission
+    Properties: 
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref rLambdaFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt rStopRule.Arn
