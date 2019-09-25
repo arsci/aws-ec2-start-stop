@@ -10,7 +10,9 @@ There is a second lambda function created as part of this template that is used 
 
 Cron statements must be valid for CloudWatch events. See AWS Documentation:
 
-The statement shown in the (example config)[config/aws-ec2-start-stop.config.example] file does the following:
+[AWS - CloudWatch - Schedule Expressions](https://docs.aws.amazon.com/AmazonCloudWatch/latest/events/ScheduledEvents.html)
+
+The statement shown in the [example config](config/aws-ec2-start-stop.config.example.yml) file does the following:
 
 STARTS the EC2 instances at 8AM PST, MON-FRI
 STOPS the EC2 instances at 7PM PST, MON-FRI
