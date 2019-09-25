@@ -24,21 +24,25 @@ Resources:
         ZipFile: !Sub |
           import json, boto3
           def handler(event, context):
-            client = boto3.client('ec2')
-            if event['action'] == 'start':
-              response = client.start_instances(
-                  InstanceIds=[${pInstances}]
-              )
-              print(response)
-            elif event['action'] == 'stop':
-              response = client.stop_instances(
-                InstanceIds=[${pInstances}]
-              )
-              print(response)
-            return {
-              'statusCode': 200,
-              'body': json.dumps('Action Complete')
-            }
+              client = boto3.client('ec2')
+              if event['action'] == 'start':
+                  response = client.start_instances(
+                      InstanceIds=[
+                          event['instances']
+                      ]
+                  )
+                  print(response)
+              elif event['action'] == 'stop':
+                  response = client.stop_instances(
+                      InstanceIds=[
+                          event['instances']
+                      ]
+                  )
+                  print(response)
+              return {
+                  'statusCode': 200,
+                  'body': json.dumps('Action Complete')
+              }
       Handler: index.handler
       Role: !GetAtt rLambdaRole.Arn
       Runtime: python3.6
@@ -163,22 +167,22 @@ Resources:
     Properties: 
       Description: Rule for starting the EC2 instances
       ScheduleExpression: !Sub 'cron(${pCronStart})'
-      State: DISABLED
+      State: ENABLED
       Targets: 
         - Arn: !GetAtt rLambdaFunction.Arn
           Id: ec2-start-rule
-          Input: !Sub '{ "action": "start", "instance": "${pInstances}" }'
+          Input: !Sub '{ "action": "start", "instances": "${pInstances}" }'
 
   rStopRule:
     Type: AWS::Events::Rule
     Properties: 
       Description: Rule for stopping the EC2 instances
       ScheduleExpression: !Sub 'cron(${pCronStop})'
-      State: DISABLED
+      State: ENABLED
       Targets: 
         - Arn: !GetAtt rLambdaFunction.Arn
           Id: ec2-stop-rule
-          Input: !Sub '{ "action": "stop", "instance": "${pInstances}" }'
+          Input: !Sub '{ "action": "stop", "instances": "${pInstances}" }'
 
   rLambdaInvocationRoleStart:
     Type: AWS::Lambda::Permission
