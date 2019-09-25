@@ -2,6 +2,10 @@
 
 This template can be used to automatically start and stop EC2 instances based on a cron schedule.
 
+This template creates the appropriate lambda function to initiate the start/stop commands, and CloudWatch event rules to trigger the lambda function at the appropriate time.
+
+There is a second lambda function created as part of this template that is used to dynamically generate instance ARNs for the IAM roles for the Cloudformation template.
+
 ### CRON statements
 
 Cron statements must be valid for CloudWatch events. See AWS Documentation:
