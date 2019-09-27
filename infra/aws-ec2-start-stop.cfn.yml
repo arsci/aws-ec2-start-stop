@@ -27,16 +27,12 @@ Resources:
               client = boto3.client('ec2')
               if event['action'] == 'start':
                   response = client.start_instances(
-                      InstanceIds=[
-                          event['instances']
-                      ]
+                      InstanceIds=event['instances'].replace(" ","").split(",")
                   )
                   print(response)
               elif event['action'] == 'stop':
                   response = client.stop_instances(
-                      InstanceIds=[
-                          event['instances']
-                      ]
+                      InstanceIds=event['instances'].replace(" ","").split(",")
                   )
                   print(response)
               return {
@@ -56,7 +52,6 @@ Resources:
           import json
 
           def handler(event, context):
-          
             print(event)
 
             instances = event['ResourceProperties']['Instances'].split(',')
